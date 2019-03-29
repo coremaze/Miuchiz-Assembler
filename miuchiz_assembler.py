@@ -1,5 +1,6 @@
 import opcodes
 import struct
+import sys
 
 NEST_DIRECTIVES = ('BBANK', 'PBANK', 'DBANK', 'LOWRAM', 'ORG' , 'MACRO')
 FLASH_SIZE = 0x200000
@@ -457,20 +458,29 @@ def ReplaceStrings(lines):
 
         lines[i] = result
 
-text = LoadText('test.asm')
-lines = text.split('\n')
-lines = ParseIncludes(lines)
-macros = PullMacros(lines)
-ReplaceStrings(lines)
-SubstituteMacros(lines, macros)
-sections = dict([(str(i), line) for i, line in enumerate(lines)])
-ParseBlocks(sections)
-symbols = ParseSymbols(sections)
-fileOffsets, _ = FindFileOffsets(sections, symbols)
-ReplaceSymbols(fileOffsets, symbols)
+def main():
+    if len(sys.argv) != 3:
+        print("USAGE: miuchiz_assembler.py <input file> <output file>")
+        return
+    input_file = sys.argv[1]
+    output_file = sys.argv[2]
+    text = LoadText(input_file)
+    lines = text.split('\n')
+    lines = ParseIncludes(lines)
+    macros = PullMacros(lines)
+    ReplaceStrings(lines)
+    SubstituteMacros(lines, macros)
+    sections = dict([(str(i), line) for i, line in enumerate(lines)])
+    ParseBlocks(sections)
+    symbols = ParseSymbols(sections)
+    fileOffsets, _ = FindFileOffsets(sections, symbols)
+    ReplaceSymbols(fileOffsets, symbols)
+    output = Assemble(fileOffsets, symbols)
 
-output = Assemble(fileOffsets, symbols)
-#print(fileOffsets)
 
-with open('output.dat', 'wb') as f:
-    f.write(output)
+    with open(output_file, 'wb') as f:
+        f.write(output)
+
+
+if __name__ == '__main__':
+    main()
