@@ -157,19 +157,32 @@ def ParseBlocks(d):
     RemoveComments(d)
     RemoveBrackets(d)
  
-def ParseSymbols(d):
+##def ParseSymbols(d):
+##    symbols = {}
+##    keys = list(d)
+##    for k in keys:
+##        if type(d[k]) == str:
+##            line = d[k]
+##            if line.startswith('.SET '):
+##                _, symbol, expr = line.split()
+##                symbols[symbol] = expr
+##                del d[k]
+##        elif type(d[k]) == dict:
+##            sub_symbols = ParseSymbols(d[k])
+##            symbols = {**symbols, **sub_symbols}
+##    return symbols
+
+def ParseSymbols(l):
     symbols = {}
-    keys = list(d)
-    for k in keys:
-        if type(d[k]) == str:
-            line = d[k]
-            if line.startswith('.SET '):
-                _, symbol, expr = line.split()
-                symbols[symbol] = expr
-                del d[k]
-        elif type(d[k]) == dict:
-            sub_symbols = ParseSymbols(d[k])
-            symbols = {**symbols, **sub_symbols}
+    i = 0
+    while i < len(l):
+        line = l[i]
+        if line.startswith('.SET '):
+            _, symbol, expr = line.split()
+            symbols[symbol] = expr
+            l.pop(i)
+            i -= 1
+        i += 1
     return symbols
 
 def EvaluateSymbol(sym, symbols):
@@ -304,10 +317,10 @@ def GetInstructionLength(text):
     else:
         return 0 #raise Exception(f'Cannot identify length for {text}, {mode}')
 
-def GetBankAddress(directive):
+def GetBankAddress(directive, symbols={}):
     multiplier = GetBankLogicalAddress(directive)
     page = directive.split()[1]
-    page = EvaluateNumber(page, symbols={})
+    page = EvaluateNumber(page, symbols)
     address = page * multiplier
     return address
 
@@ -337,7 +350,7 @@ def FindFileOffsets(d, symbols, base_offset=0, logical_offset=0):
             logical_offset += GetInstructionLength(element)
         else:
             if k.split()[0] in ('.BBANK', '.PBANK', '.DBANK'):
-                new_dict, _ = FindFileOffsets(element, symbols, GetBankAddress(k), GetBankLogicalAddress(k))
+                new_dict, _ = FindFileOffsets(element, symbols, GetBankAddress(k, symbols), GetBankLogicalAddress(k))
             elif k == '.LOWRAM':
                 new_dict, _ = FindFileOffsets(element, symbols, -0x10000, 0x80)
             elif k.split()[0] == '.ORG':
@@ -470,9 +483,9 @@ def main():
     macros = PullMacros(lines)
     ReplaceStrings(lines)
     SubstituteMacros(lines, macros)
+    symbols = ParseSymbols(lines)
     sections = dict([(str(i), line) for i, line in enumerate(lines)])
     ParseBlocks(sections)
-    symbols = ParseSymbols(sections)
     fileOffsets, _ = FindFileOffsets(sections, symbols)
     ReplaceSymbols(fileOffsets, symbols)
     output = Assemble(fileOffsets, symbols)
