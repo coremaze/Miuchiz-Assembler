@@ -1,7 +1,7 @@
 import opcodes
 import struct
 
-NEST_DIRECTIVES = ('BBANK', 'PBANK', 'DBANK', 'LOWRAM', 'ORG')
+NEST_DIRECTIVES = ('BBANK', 'PBANK', 'DBANK', 'LOWRAM', 'ORG' , 'MACRO')
 FLASH_SIZE = 0x200000
 
 def LoadText(fileName):
@@ -20,9 +20,8 @@ def SectionName(text):
             return s
     return ''
 
-def GetBlock(d, start):
+def GetBlock(d, start, startchar='{', endchar='}'):
     depth = 0
-    sectionLines = []
     started = False
     found_first = False
     for k in d:
@@ -31,10 +30,10 @@ def GetBlock(d, start):
         if not started:
             continue
         line = d[k]
-        if '{' in line:
+        if startchar in line:
             found_first = True
             depth += 1
-        if '}' in line:
+        if endchar in line:
             depth -= 1
         if found_first:
             if depth == 0:
@@ -110,7 +109,7 @@ def RemoveComments(d):
             del d[k]
 
 def MoveBrackets(text):
-    return text.replace('{', '\n{\n').replace('}', '\n}\n')
+    return text.replace('{', '\n{\n').replace('}', '\n}\n').replace('[', '\n[\n').replace(']', '\n]\n')
             
 
 def ParseIncludes(lines):
@@ -321,7 +320,7 @@ def GetBankLogicalAddress(directive):
     else:
         return 0x0000
     
-def FindFileOffsets(d, symbols, base_offset=0, logical_offset=0, directive=''):
+def FindFileOffsets(d, symbols, base_offset=0, logical_offset=0):
     length_dict = {}
     current_offset = base_offset
     for k in d:
@@ -337,16 +336,18 @@ def FindFileOffsets(d, symbols, base_offset=0, logical_offset=0, directive=''):
             logical_offset += GetInstructionLength(element)
         else:
             if k.split()[0] in ('.BBANK', '.PBANK', '.DBANK'):
-                new_dict, _ = FindFileOffsets(element, symbols, GetBankAddress(k), GetBankLogicalAddress(k), k.split()[0])
+                new_dict, _ = FindFileOffsets(element, symbols, GetBankAddress(k), GetBankLogicalAddress(k))
             elif k == '.LOWRAM':
-                new_dict, _ = FindFileOffsets(element, symbols, -0x10000, 0x80, k)
+                new_dict, _ = FindFileOffsets(element, symbols, -0x10000, 0x80)
             elif k.split()[0] == '.ORG':
                 new_logical_offset = EvaluateNumber(k.split()[1], symbols)
-                new_dict, current_offset = FindFileOffsets(element, symbols, current_offset, new_logical_offset, '')
+                new_dict, current_offset = FindFileOffsets(element, symbols, current_offset, new_logical_offset)
             else:
-                new_dict, current_offset = FindFileOffsets(element, symbols, current_offset, logical_offset, '')
+                new_dict, current_offset = FindFileOffsets(element, symbols, current_offset, logical_offset)
             length_dict = {**length_dict, **new_dict}
     return length_dict, current_offset
+
+
     
 def ReplaceSymbols(d, symbols):
     for k in d:
@@ -377,9 +378,91 @@ def Assemble(d, symbols):
             
     return output
 
+def PullMacros(lines, macros={}):
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
+        if not line.startswith('.MACRO '):
+            continue
+        start, end = GetBlock(dict([(i, line) for i, line in enumerate(lines)]), i)
+        macro_name = line.lstrip('.MACRO ').split('(')[0].strip()
+        args = line.lstrip('.MACRO ').lstrip(macro_name).lstrip('(').rstrip(')')
+        args = [x.strip() for x in args.split(',')]
+        for arg in args:
+            if not arg.startswith('%'):
+                raise Exception("Macro arguments must start with %")
+        macro_lines = '\n'.join([x.strip() for x in lines[start+1 : end]])
+        macros[macro_name] = {'args':args, 'lines':macro_lines}
+        for j in range(start, end+1):
+            lines.pop(start)
+        lines.pop(i-1)
+    return macros
+
+def SubstituteMacros(lines, macros):
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
+        for macro in macros:
+            if line.startswith(macro + '('):
+                args = line[len(macro + '('):].rstrip(')')
+                args = [x.strip() for x in args.split(',')]
+                if len(args) != len(macros[macro]['args']):
+                    raise Exception(f"Macro given wrong number of arguments.")
+                macro_lines = macros[macro]['lines']
+                matched_args = list(zip(macros[macro]['args'], args))
+                for arg in sorted(matched_args, key=lambda x: len(x[0]), reverse=True):
+                    macro_lines = macro_lines.replace(arg[0], arg[1])
+                macro_lines = macro_lines.split('\n')
+                lines.pop(i-1)
+                for j in range(len(macro_lines)):
+                    l = macro_lines[j]
+                    lines.insert(i-1+j, l)
+
+def LetterToNum(letter):
+    return '$%02X' % ord(letter)
+
+def ReplaceStrings(lines):
+    escaped = False
+    inString = False
+    for i in range(len(lines)):
+        result = ''
+        line = lines[i]
+        for char in line:
+            if not inString and char == '"':
+                inString = True
+                continue
+            if inString:
+                if not escaped:
+                    if char == '"':
+                        result = result[:-1]
+                        inString = False
+                        continue
+                    if char == '\\':
+                        escaped = True
+                        continue
+                else:
+                    escaped = False
+                    if char == '\\':
+                        result += LetterToNum('\\') + ','
+                        continue
+                    if char == 'n':
+                        result += LetterToNum('\n') + ','
+                        continue
+                result += LetterToNum(char) + ','
+                    
+            else:
+                result += char
+
+        lines[i] = result
+
 text = LoadText('test.asm')
 lines = text.split('\n')
 lines = ParseIncludes(lines)
+macros = PullMacros(lines)
+ReplaceStrings(lines)
+SubstituteMacros(lines, macros)
 sections = dict([(str(i), line) for i, line in enumerate(lines)])
 ParseBlocks(sections)
 symbols = ParseSymbols(sections)
