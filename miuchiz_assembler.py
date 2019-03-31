@@ -226,7 +226,7 @@ def MakeDefaultPCs(lines):
     i = 0
     while i < len(lines):
         first_word = lines[i].split(' ')[0]
-        if first_word in ('.DBANK', '.PBANK', '.DBANK'):
+        if first_word in ('.BBANK', '.PBANK', '.DBANK'):
             i += 1
             lines.insert(i, f'.AT {GetBankLogicalAddress(first_word)}')
             i += 1
@@ -482,6 +482,25 @@ def SplitLabelLines(lines):
             lines.insert(i, line[loc+1:].strip())
         i += 1
 
+def MergeSegments(lines):
+    banks = {}
+    current_bank = None
+    for line in lines:
+        if line.split(' ')[0] in ('.BBANK', '.PBANK', '.DBANK', '.LOWRAM'):
+            current_bank = line.strip()
+            if current_bank not in banks:
+                banks[current_bank] = []
+        else:
+            if current_bank is None:
+                raise Exception(f'Line is not in a bank {line}')
+            banks[current_bank].append(line)
+    lines = []
+    for bank in banks:
+        lines.append(bank)
+        for bline in banks[bank]:
+            lines.append(bline)
+    return lines
+
 def main():
     if len(sys.argv) == 3:
         inputFile = sys.argv[1]
@@ -511,10 +530,12 @@ def main():
     macros = GetMacros(lines)
     InjectMacros(lines, macros)
 
+    SubstituteSymbols(lines, symbols)
+    lines = MergeSegments(lines)
+    
     #Give each bank and .AT a default program counter
     MakeDefaultPCs(lines)
 
-    SubstituteSymbols(lines, symbols)
     segments = MakeSegments(lines)
     offset_segments = MakeSegmentOffsets(segments, symbols)
 
