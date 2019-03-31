@@ -780,3 +780,9 @@ def GetOpcode(name, mode):
     for k in opcodes:
         if opcodes[k]['name'] == name and opcodes[k]['mode'] == mode:
             return k
+
+def IsOpcode(name):
+    for k in opcodes:
+        if opcodes[k]['name'] == name:
+            return True
+    return False

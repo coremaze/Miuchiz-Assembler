@@ -1,256 +1,265 @@
 import opcodes
+import random
 import struct
 import sys
 
-NEST_DIRECTIVES = ('BBANK', 'PBANK', 'DBANK', 'LOWRAM', 'ORG' , 'MACRO')
-FLASH_SIZE = 0x200000
+def RemoveComments(lines):
+    for i in range(len(lines)):
+        if ';' in lines[i]:
+            lines[i] = lines[i][:lines[i].find(';')]
 
-def LoadText(fileName):
+def RemoveBlankLines(lines):
+    return [x for x in lines if x.strip()]
+
+def StripLines(lines, strip=None):
+    for i in range(len(lines)):
+        if strip is not None:
+            lines[i] = lines[i].strip(strip)
+        else:
+            lines[i] = lines[i].strip()
+
+def LoadFileLines(fileName):
     with open(fileName, 'r') as f:
-        return MoveBrackets(f.read())
+        lines = f.read().split('\n')
+    return lines
 
-def UncommentText(text):
-    if ';' in text:
-        return text[:text.find(';')]
-    else:
-        return text
-
-def SectionName(text):
-    for s in NEST_DIRECTIVES:
-        if text.lstrip().startswith('.'+s):
-            return s
-    return ''
-
-def GetBlock(d, start, startchar='{', endchar='}'):
-    depth = 0
-    started = False
-    found_first = False
-    for k in d:
-        if k == start:
-            started = True
-        if not started:
-            continue
-        line = d[k]
-        if startchar in line:
-            found_first = True
-            depth += 1
-        if endchar in line:
-            depth -= 1
-        if found_first:
-            if depth == 0:
-                end = k
-                return (start, end)
-    raise Exception(f"Block not closed.")
-        
-def SubDict(d, start, end):
-    new_dict = {}
-    started = False
-    for k in d:
-        if k == start:
-            started = True
-        if not started:
-            continue
-        new_dict[k] = d[k]
-        if k == end:
-            return new_dict
-
-def RemoveDictPart(d, start, end):
-    keys = [x for x in d]
-    started = False
-    excluded_keys = []
-    for k in keys:
-        if k == start:
-            started = True
-        if not started:
-            continue
-        del d[k]
-        excluded_keys.append(k)
-        if k == end:
-            return excluded_keys
-
-def RemoveBrackets(d):
-    keys = [x for x in d]
-    for k in keys:
-        if type(d[k]) != str:
-            continue
-        d[k] = d[k].strip('}')
-        d[k] = d[k].strip('{')
-        d[k] = d[k].strip()
-        if d[k] == '':
-            del d[k]
-    keys = [x for x in d]
-    for k in keys:
-        if type(k) != str:
-            continue
-        key2 = k.strip('}').strip('{').strip()
-        if k != key2:
-            d[key2] = d[k]
-            del d[k]
-
-def RemoveComments(d):
-    keys = [x for x in d]
-    for k in keys:
-        if type(d[k]) != str:
-            continue
-        if ';' not in d[k]:
-            continue
-        d[k] = d[k][:d[k].find(';')]
-        d[k] = d[k].strip()
-        if d[k] == '':
-            del d[k]
-    keys = [x for x in d]
-    for k in keys:
-        if type(k) != str:
-            continue
-        if ';' not in k:
-            continue
-        key2 = k[:k.find(';')]
-        if k != key2:
-            d[key2] = d[k]
-            del d[k]
-
-def MoveBrackets(text):
-    return text.replace('{', '\n{\n').replace('}', '\n}\n').replace('[', '\n[\n').replace(']', '\n]\n')
-            
-
-def ParseIncludes(lines):
+def DoIncludes(lines):
     i = 0
     while i < len(lines):
         line = lines[i]
-        line = line.strip()
         if line.startswith('.INCLUDE '):
-            line = line.lstrip('.INCLUDE ')
-            line = line.strip('"')
-            included_text = LoadText(line)
-            included_lines = included_text.split('\n')
-            lines = lines[:i] + included_lines + lines[i+1:]
-        i += 1
-    return lines
-   
-def ParseBlocks(d):
-    excluded_keys = []
-    for k in d:
-        d[k] = d[k].strip()
-        if d[k] == '':
-            excluded_keys.append(k)
-            continue
-    for key in excluded_keys:
-        del d[key]
-    keys = [x for x in d]
-    
-    for k in keys:
-        if k in excluded_keys:
-            continue
-        line = d[k]
-        sectionName = SectionName(line)
-        if sectionName:
-            start, end = GetBlock(d, k)
-            section_dict = SubDict(d, start, end)
-            full_section_name = section_dict[list(section_dict)[0]]
-            del section_dict[list(section_dict)[0]]
-            excluded_keys.extend(RemoveDictPart(d, start, end))
-            ParseBlocks(section_dict)
-            if full_section_name in d:
-                d[full_section_name] = {**d[full_section_name], **section_dict}
-            else:
-                d[full_section_name] = section_dict      
-    RemoveComments(d)
-    RemoveBrackets(d)
- 
-##def ParseSymbols(d):
-##    symbols = {}
-##    keys = list(d)
-##    for k in keys:
-##        if type(d[k]) == str:
-##            line = d[k]
-##            if line.startswith('.SET '):
-##                _, symbol, expr = line.split()
-##                symbols[symbol] = expr
-##                del d[k]
-##        elif type(d[k]) == dict:
-##            sub_symbols = ParseSymbols(d[k])
-##            symbols = {**symbols, **sub_symbols}
-##    return symbols
-
-def ParseSymbols(l):
-    symbols = {}
-    i = 0
-    while i < len(l):
-        line = l[i]
-        if line.startswith('.SET '):
-            _, symbol, expr = line.split()
-            symbols[symbol] = expr
-            l.pop(i)
+            string = ''
+            chars = line[len('.INCLUDE '):]
+            chars = [x.strip() for x in chars.split(',')]
+            string = ''.join([chr(DecodeNumber(x)) for x in chars])
+            includeLines = LoadFileLines(string)
+            StripLines(includeLines)
+            ReplaceStrings(includeLines)
+            RemoveComments(includeLines)
+            StripLines(includeLines)
+            includeLines = RemoveBlankLines(includeLines)
+            DoIncludes(includeLines)
+            lines.pop(i)
+            for includeLine in includeLines:
+                lines.insert(i, includeLine)
+                i += 1
             i -= 1
+            
         i += 1
-    return symbols
 
-def EvaluateSymbol(sym, symbols):
-    raw_symbol = sym.lstrip('<').lstrip('>').rstrip(',X').rstrip(',Y').lstrip('(').rstrip(')').rstrip(',Y')
-    raw_symbol = raw_symbol.split('+')[0]
-    raw_symbol = raw_symbol.split('-')[0]
-    if raw_symbol not in symbols:
-        raise Exception(f"Symbol {sym} does not exist.")
-    return EvaluateNumber(sym.replace(sym, symbols[raw_symbol]), symbols)
+def DecodeNumber(num):
+    num = num.strip()
+    negative = num.startswith('-')
+    if negative:
+        num = num[1:]
+    if num.startswith('$'):
+        num = int(num[1:], base=16)
+    elif num.startswith('0b'):
+        num = int(num[2:], base=2)
+    else:
+        num = int(num)
+    if negative:
+        num = -num
+    return num
 
-def EvaluateNumber(sym, symbols):
-    sym = sym.replace('-', '+-')
-    adds = sym.split('+')
-    s = 0
-    little = sym.startswith('<')
-    big = sym.startswith('>')
-    for a in adds:
-        a = a.lstrip('<').lstrip('>')
-        try:
-            if a.startswith('$'):
-                a = int(a[1:], base=16)
+def ReplaceStrings(lines):
+    escaped = False
+    inString = False
+    for i in range(len(lines)):
+        result = ''
+        line = lines[i]
+        for char in line:
+            if not inString and char == '"':
+                inString = True
+                continue
+            if inString:
+                if not escaped:
+                    if char == '"':
+                        result = result[:-1]
+                        inString = False
+                        continue
+                    if char == '\\':
+                        escaped = True
+                        continue
+                else:
+                    escaped = False
+                    if char == '\\':
+                        result += LetterToNum('\\') + ','
+                        continue
+                    if char == 'n':
+                        result += LetterToNum('\n') + ','
+                        continue
+                result += LetterToNum(char) + ','
+                    
             else:
-                a = int(a)
-        except:
-            a = EvaluateSymbol(a, symbols)
-        s += a
-    if little:
-        s &= 0xFF
-    if big:
-        s >>= 8
-    return s
+                result += char
 
-def AssembleInstruction(instruction, logical_location, symbols):
-    mode = GetInstructionAddressingMode(instruction)
-    mnemonic = instruction.split(' ')[0]
-    args = [x.strip() for x in instruction.split(' ')[1:] if x.strip()]
-    args = ' '.join(args)
-    opcode = opcodes.GetOpcode(mnemonic, mode)
-    b_instruction = b''
-    b_instruction += struct.pack('<B', opcode)
-    if mode == 'Relative':
-        dest = EvaluateNumber(args, symbols)
-        offset = dest - logical_location - 2
-        b_instruction += struct.pack('<b', offset)
-    elif mode in ('Implied', 'Accumulator'):
-        pass
-    elif mode == 'Immediate':
-        literal = args.lstrip('#')
-        literal = EvaluateNumber(literal, symbols)
-        b_instruction += struct.pack('<B', literal)
-    elif mode in ('Zero Page', 'Zero Page,X', '(Zero Page),Y', '(Zero Page)'):
-        zp_ptr = args
-        zp_ptr = EvaluateNumber(zp_ptr, symbols)
-        b_instruction += struct.pack('<B', zp_ptr)
-    elif mode in ('Absolute,X', 'Absolute,Y', 'Absolute'):
-        absolute = args
-        absolute = EvaluateNumber(absolute, symbols)
-        b_instruction += struct.pack('<H', absolute)
-    elif mode == 'Bit, Relative':
-        args = args.split(',')
-        bit = args[0].strip()
-        bit = EvaluateNumber(bit, symbols)
-        b_instruction += struct.pack('<B', bit)
-        dest = args[1].strip()
-        dest = EvaluateNumber(dest, symbols)
-        offset = dest - logical_location - 3
-        b_instruction += struct.pack('<b', offset)
-    return b_instruction
+        lines[i] = result
+
+
+def LetterToNum(letter):
+    return '$%02X' % ord(letter)
+
+def GetSets(lines, symbols):
+    i = 0
+    while i < len(lines):
+        if lines[i].startswith('.SET '):
+            _, symbol, value = lines[i].split(' ')
+            if not IsValidLabel(symbol):
+                raise Exception(f'Invalid symbol: {symbol}')
+            symbols[symbol] = value
+            lines.pop(i)
+        else:
+            i += 1
+
+def IsValidLabel(label):
+    if not label:
+        return False
+    if opcodes.IsOpcode(label.upper()):
+        return False
+    if ord('0') <= ord(label[0]) <= ord('9'):
+        return False
+    return label.replace('@','').replace('_', '').isalnum()
+
+def IsValidMacroArgument(arg):
+    if len(arg) <= 1: return False
+    if not arg.startswith('%'): return False
+    arg = arg[1:]
+    return IsValidLabel(arg)
+
+def GetMacroInfo(macro, declaration=True):
+    if macro.find('(') == -1 or not macro.endswith(')'):
+        raise Exception(f"Invalid macro: {macro}")
+    macroName = macro[:macro.find('(')]
+    if not IsValidLabel(macroName):
+        raise Exception(f'Invalid macro name: {macro}')
+    argstr = macro[macro.find('(')+1 : -1]
+    args = [x.strip() for x in argstr.split(',') if x.strip()]
+    if declaration:
+        for arg in args:
+            if not IsValidMacroArgument(arg):
+                raise Exception(f'Invalid macro argument: {arg}')
+    return macroName, args
+    
+
+    
+def GetMacros(lines):
+    macros = {}
+    i = 0
+    current_macro = None
+    while i < len(lines):
+        if current_macro is not None:
+            if lines[i].startswith('.MACRO '):
+                raise Exception(f'Embedded macro in {current_macro}')
+            if lines[i] == '.ENDMACRO':
+                current_macro = None
+            else:
+                macros[current_macro]['lines'].append(lines[i])
+            lines.pop(i)
+        elif lines[i].startswith('.MACRO '):
+            macro = lines[i][len('.MACRO '):]
+            macroName, args = GetMacroInfo(macro)
+            macros[macroName] = {'args':args, 'lines':[]}
+            current_macro = macroName
+            lines.pop(i)
+            
+        else:
+            i += 1
+    return macros
+
+def IsLabelLine(line):
+    return line.endswith(':')
+            
+def InjectMacros(lines, macros):
+    i = 0
+    macro_identifier = 0
+    while i < len(lines):
+        if '(' not in lines[i]:
+            pass
+        elif not lines[i].endswith(')'):
+            pass
+        elif opcodes.IsOpcode(lines[i].split(' ')[0]):
+            pass
+        else:
+            name, args = GetMacroInfo(lines[i], declaration=False)
+            if name not in macros:
+                raise Exception(f'Macro does not exist: {name}')
+            macro = macros[name]
+            if len(args) != len(macro['args']):
+                raise Exception(f'Wrong args for macro: {lines[i]}')
+            lines_to_inject = macro['lines'][:]
+            for mArg, lArg in sorted(zip(macro['args'], args), key=lambda x: len(x[0]), reverse=True):
+                for j in range(len(lines_to_inject)):
+                    #replace arguments
+                    lines_to_inject[j] = lines_to_inject[j].replace(mArg, lArg)
+                    #handle labels
+                    if IsLabelLine(lines_to_inject[j]):
+                        label = lines_to_inject[j][:-1]
+                        if not IsValidLabel(label):
+                            raise Exception(f'Invalid label {label}')
+                        new_label = f'@@@@@@@@@{random.randint(100000,9999999999999999999999999999)}_@_{macro_identifier}'
+                        macro_identifier += 1
+                        for x in range(len(lines_to_inject)):
+                            lines_to_inject[x] = lines_to_inject[x].replace(label, new_label)
+                        
+            #Replace macro line with the macro's contents
+            lines.pop(i)
+            for iLine in lines_to_inject:
+                lines.insert(i, iLine)
+                i += 1
+            i -= 1
+                    
+        i += 1
+        
+
+def GetBankLogicalAddress(bank):
+    bank = bank.lstrip('.')
+    if bank == 'BBANK': return 0x2000
+    if bank == 'PBANK': return 0x4000
+    if bank == 'DBANK': return 0x8000
+    raise Exception(f'Not a bank: {bank}')
+
+def MakeDefaultPCs(lines):
+    i = 0
+    while i < len(lines):
+        first_word = lines[i].split(' ')[0]
+        if first_word in ('.DBANK', '.PBANK', '.DBANK'):
+            i += 1
+            lines.insert(i, f'.AT {GetBankLogicalAddress(first_word)}')
+            i += 1
+            lines.insert(i, f'.PC {GetBankLogicalAddress(first_word)}')
+        elif first_word == '.LOWRAM':
+            i += 1
+            lines.insert(i, f'.AT -$1000000')
+            i += 1
+            lines.insert(i, f'.PC $80')
+        elif first_word == '.AT':
+            arg = lines[i].split(" ")[1]
+            i += 1
+            lines.insert(i, f'.PC {arg}')
+        i += 1
+
+def MultiSplit(text, splits, keep_separator=False):
+    l = [text]
+    for split in splits:
+        for i in range(len(l)):
+            t = l.pop(i)
+            j = 0
+            t_split = t.split(split)
+            if keep_separator:
+                for x in range(1, 2*(len(t_split)-1), 2):
+                    t_split.insert(x, split)
+            for s in t_split:
+                l.insert(i + j, s)
+                j += 1
+    return [x for x in l if x]
+
+def SubstituteSymbols(lines, symbols):
+    for i in range(len(lines)):
+        split_line = MultiSplit(lines[i], [' ', '\t', '+', '-', '<', '>', '(', ')', '#', ','], keep_separator=True)
+        for symbol in symbols:
+            split_line = [(x if x != symbol else symbols[symbol]) for x in split_line]
+        lines[i] = ''.join(split_line)
 
 def GetInstructionAddressingMode(text):
     mnemonic = text.split(' ')[0]
@@ -296,9 +305,6 @@ def GetInstructionAddressingMode(text):
     
     return mode
 
-    
-    
-
 def GetInstructionLength(text):
     for string, length in (('.DB ', 1), ('.DW ', 2), ('.DD ', 4), ('.DQ ', 8) ):
         if text.startswith(string):
@@ -318,182 +324,203 @@ def GetInstructionLength(text):
         return 0 #raise Exception(f'Cannot identify length for {text}, {mode}')
 
 def GetBankAddress(directive, symbols={}):
-    multiplier = GetBankLogicalAddress(directive)
+    multiplier = GetBankLogicalAddress(directive.split(' ')[0])
     page = directive.split()[1]
-    page = EvaluateNumber(page, symbols)
+    page = DecodeNumber(page)
     address = page * multiplier
     return address
 
-def GetBankLogicalAddress(directive):
-    if directive.startswith('.BBANK '):
-        return 0x2000
-    elif directive.startswith('.PBANK '):
-        return 0x4000
-    elif directive.startswith('.DBANK '):
-        return 0x8000
-    else:
-        return 0x0000
-    
-def FindFileOffsets(d, symbols, base_offset=0, logical_offset=0):
-    length_dict = {}
-    current_offset = base_offset
-    for k in d:
-        element = d[k]
-        if type(element) == str:
-            if len(element.split(':')) > 1:
-                label, element = element.split(':')[0].strip(), ''.join(element.split(':')[1:]).strip()
-                symbols[label] = str(logical_offset)
-            length_dict[current_offset, logical_offset] = element
-            if not element.strip():
-                continue
-            current_offset += GetInstructionLength(element)
-            logical_offset += GetInstructionLength(element)
+def MakeSegments(lines):
+    segments = {}
+    seg_addr = None
+    bank_type = None
+    for line in lines:
+        if line.split()[0] in ('.BBANK', '.PBANK', '.DBANK'):
+            seg_addr = GetBankAddress(line)
+            bank_type = line.split()[0][1:]
+            if seg_addr not in segments:
+                segments[seg_addr] = []
+        elif line.split()[0] == '.LOWRAM':
+            seg_addr = -0x1000000
+            bank_type = 'LOWRAM'
+            if seg_addr not in segments:
+                segments[seg_addr] = []
         else:
-            if k.split()[0] in ('.BBANK', '.PBANK', '.DBANK'):
-                new_dict, _ = FindFileOffsets(element, symbols, GetBankAddress(k, symbols), GetBankLogicalAddress(k))
-            elif k == '.LOWRAM':
-                new_dict, _ = FindFileOffsets(element, symbols, -0x10000, 0x80)
-            elif k.split()[0] == '.ORG':
-                new_logical_offset = EvaluateNumber(k.split()[1], symbols)
-                new_dict, current_offset = FindFileOffsets(element, symbols, current_offset, new_logical_offset)
+            if seg_addr is None:
+                raise Exception(f'Line is not in any bank: {line}')
+            segments[seg_addr].append( (bank_type, line))
+    return segments
+
+def MakeSegmentOffsets(segments, symbols):
+    offset_segments = {}
+    for segment in segments:
+        offset_segments[segment] = []
+        PC = None
+        addr = None
+        for entry in segments[segment]:
+            bank_type, line = entry
+            if line.split(' ')[0] == '.AT':
+                addr = DecodeNumber(line.split(' ')[1])
+            elif line.split(' ')[0] == '.PC':
+                PC = DecodeNumber(line.split(' ')[1])
+            elif IsLabelLine(line):
+                label = line[:-1]
+                if not IsValidLabel(label):
+                    raise Exception(f'Invalid label: {label}')
+                symbols[label] = str(PC)
             else:
-                new_dict, current_offset = FindFileOffsets(element, symbols, current_offset, logical_offset)
-            length_dict = {**length_dict, **new_dict}
-    return length_dict, current_offset
+                length = GetInstructionLength(line)
+                offset_segments[segment].append( [bank_type, addr, PC, line] )
+                addr += length
+                PC += length
+    return offset_segments
 
+def SubstituteSymbols2(offset_segments, symbols):
+    for segment in offset_segments:
+        for inst in offset_segments[segment]:
+            bank_type, addr, PC, line = inst
+            lines = [line]
+            SubstituteSymbols(lines, symbols)
+            line = lines[0]
+            inst[3] = line
 
+def EvaluateNumber(sym):
+    sym = sym.replace('-', '+-')
+    adds = sym.split('+')
+    s = 0
+    little = sym.startswith('<')
+    big = sym.startswith('>')
+    for a in adds:
+        a = a.lstrip('<').lstrip('>')
+        if a.startswith('$'):
+            a = int(a[1:], base=16)
+        else:
+            a = int(a)
+
+        s += a
+    if little:
+        s &= 0xFF
+    if big:
+        s >>= 8
+    return s
+
+def AssembleInstruction(instruction, logical_location):
+    b_instruction = b''
+    if instruction.split(' ')[0] in ('.DB', '.DW', '.DD', '.DQ'):
+        for string, length, fmt in (('.DB ', 1, '<B'), ('.DW ', 2, '<H'), ('.DD ', 4, '<I'), ('.DQ ', 8, '<Q') ):
+            if instruction.startswith(string):
+                args = instruction.lstrip(string).split(',')
+                for arg in args:
+                    arg = arg.strip()
+                    num = EvaluateNumber(arg)
+                    b_instruction += struct.pack(fmt, num)
+        return b_instruction
     
-def ReplaceSymbols(d, symbols):
-    for k in d:
-        for symbol in symbols:
-            if symbol in d[k].replace('<', '').replace('>', '').replace('#', '').replace('$', '').split():
-                d[k] = d[k].replace(symbol, symbols[symbol])
+    mode = GetInstructionAddressingMode(instruction)
+    mnemonic = instruction.split(' ')[0]
+    args = [x.strip() for x in instruction.split(' ')[1:] if x.strip()]
+    args = ' '.join(args)
+    opcode = opcodes.GetOpcode(mnemonic, mode)
+    b_instruction += struct.pack('<B', opcode)
+    if mode == 'Relative':
+        dest = EvaluateNumber(args)
+        offset = dest - logical_location - 2
+        b_instruction += struct.pack('<b', offset)
+    elif mode in ('Implied', 'Accumulator'):
+        pass
+    elif mode == 'Immediate':
+        literal = args.lstrip('#')
+        literal = EvaluateNumber(literal)
+        b_instruction += struct.pack('<B', literal)
+    elif mode in ('Zero Page', 'Zero Page,X', '(Zero Page),Y', '(Zero Page)'):
+        zp_ptr = args
+        zp_ptr = MultiSplit(zp_ptr, ['(', ')', ','])[0]
+        zp_ptr = EvaluateNumber(zp_ptr)
+        b_instruction += struct.pack('<B', zp_ptr)
+    elif mode in ('Absolute,X', 'Absolute,Y', 'Absolute'):
+        absolute = args
+        absolute = MultiSplit(absolute, [','])[0]
+        absolute = EvaluateNumber(absolute)
+        b_instruction += struct.pack('<H', absolute)
+    elif mode == 'Bit, Relative':
+        args = MultiSplit(args, [',', ' '])[0]
+        bit = args[0].strip()
+        bit = EvaluateNumber(bit)
+        b_instruction += struct.pack('<B', bit)
+        dest = args[1].strip()
+        dest = EvaluateNumber(dest)
+        offset = dest - logical_location - 3
+        b_instruction += struct.pack('<b', offset)
+        
+    return b_instruction
 
-def Assemble(d, symbols):
+def Assemble(offset_segments):
     output = bytearray(0x200000)
-    for k in d:
-        physical_address, logical_address = k
-        if physical_address < 0:
-            continue
-        if d[k].startswith('.'):
-            for string, length, fmt in (('.DB ', 1, '<B'), ('.DW ', 2, '<H'), ('.DD ', 4, '<I'), ('.DQ ', 8, '<Q') ):
-                if d[k].startswith(string):
-                    args = d[k].lstrip(string).split(',')
-                    opcodes = b''
-                    for arg in args:
-                        arg = arg.strip()
-                        num = EvaluateNumber(arg, symbols)
-                        opcodes += struct.pack(fmt, num)
-        else:         
-            opcodes = AssembleInstruction(d[k],logical_address, symbols)
-                
-        l = len(opcodes)
-        output[physical_address : physical_address + l] = opcodes
-            
+    for segment in offset_segments:
+        file_location = segment
+        for inst in offset_segments[segment]:
+            bank_type, addr, PC, text = inst
+            if bank_type == 'LOWRAM':
+                continue
+            offset_from_file_location = addr - GetBankLogicalAddress(bank_type)
+            opcodes = AssembleInstruction(text, PC)
+            output[file_location+offset_from_file_location : file_location+offset_from_file_location + len(opcodes)] = opcodes
     return output
 
-def PullMacros(lines, macros={}):
+
+def SplitLabelLines(lines):
     i = 0
     while i < len(lines):
-        line = lines[i].strip()
+        if ':' in lines[i]:
+            line = lines[i]
+            loc = line.find(':')
+            lines[i] = line[:loc+1].strip()
+            i += 1
+            lines.insert(i, line[loc+1:].strip())
         i += 1
-        if not line.startswith('.MACRO '):
-            continue
-        start, end = GetBlock(dict([(i, line) for i, line in enumerate(lines)]), i)
-        macro_name = line.lstrip('.MACRO ').split('(')[0].strip()
-        args = line.lstrip('.MACRO ').lstrip(macro_name).lstrip('(').rstrip(')')
-        args = [x.strip() for x in args.split(',')]
-        for arg in args:
-            if not arg.startswith('%'):
-                raise Exception("Macro arguments must start with %")
-        macro_lines = '\n'.join([x.strip() for x in lines[start+1 : end]])
-        macros[macro_name] = {'args':args, 'lines':macro_lines}
-        for j in range(start, end+1):
-            lines.pop(start)
-        lines.pop(i-1)
-    return macros
-
-def SubstituteMacros(lines, macros):
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
-        i += 1
-        for macro in macros:
-            if line.startswith(macro + '('):
-                args = line[len(macro + '('):].rstrip(')')
-                args = [x.strip() for x in args.split(',')]
-                if len(args) != len(macros[macro]['args']):
-                    raise Exception(f"Macro given wrong number of arguments.")
-                macro_lines = macros[macro]['lines']
-                matched_args = list(zip(macros[macro]['args'], args))
-                for arg in sorted(matched_args, key=lambda x: len(x[0]), reverse=True):
-                    macro_lines = macro_lines.replace(arg[0], arg[1])
-                macro_lines = macro_lines.split('\n')
-                lines.pop(i-1)
-                for j in range(len(macro_lines)):
-                    l = macro_lines[j]
-                    lines.insert(i-1+j, l)
-
-def LetterToNum(letter):
-    return '$%02X' % ord(letter)
-
-def ReplaceStrings(lines):
-    escaped = False
-    inString = False
-    for i in range(len(lines)):
-        result = ''
-        line = lines[i]
-        for char in line:
-            if not inString and char == '"':
-                inString = True
-                continue
-            if inString:
-                if not escaped:
-                    if char == '"':
-                        result = result[:-1]
-                        inString = False
-                        continue
-                    if char == '\\':
-                        escaped = True
-                        continue
-                else:
-                    escaped = False
-                    if char == '\\':
-                        result += LetterToNum('\\') + ','
-                        continue
-                    if char == 'n':
-                        result += LetterToNum('\n') + ','
-                        continue
-                result += LetterToNum(char) + ','
-                    
-            else:
-                result += char
-
-        lines[i] = result
 
 def main():
-    if len(sys.argv) != 3:
-        print("USAGE: miuchiz_assembler.py <input file> <output file>")
+    if len(sys.argv) == 3:
+        inputFile = sys.argv[1]
+        outputFile = sys.argv[2]
+    elif len(sys.argv) == 2:
+        inputFile = sys.argv[1]
+        outputFile = 'Flash.dat'
+    else:
+        print('Usage: miuchiz_assembler.py <input file> <output file>')
         return
-    input_file = sys.argv[1]
-    output_file = sys.argv[2]
-    text = LoadText(input_file)
-    lines = text.split('\n')
-    lines = ParseIncludes(lines)
-    macros = PullMacros(lines)
+    
+    #Load file, its includes, and clean up the lines
+    lines = LoadFileLines(inputFile)
+    StripLines(lines)
     ReplaceStrings(lines)
-    SubstituteMacros(lines, macros)
-    symbols = ParseSymbols(lines)
-    sections = dict([(str(i), line) for i, line in enumerate(lines)])
-    ParseBlocks(sections)
-    fileOffsets, _ = FindFileOffsets(sections, symbols)
-    ReplaceSymbols(fileOffsets, symbols)
-    output = Assemble(fileOffsets, symbols)
+    RemoveComments(lines)
+    SplitLabelLines(lines)
+    StripLines(lines)
+    lines = RemoveBlankLines(lines)
+    DoIncludes(lines)
 
+    #Get .SETs
+    symbols = {}
+    GetSets(lines, symbols)
 
-    with open(output_file, 'wb') as f:
+    #Inject macros
+    macros = GetMacros(lines)
+    InjectMacros(lines, macros)
+
+    #Give each bank and .AT a default program counter
+    MakeDefaultPCs(lines)
+
+    SubstituteSymbols(lines, symbols)
+    segments = MakeSegments(lines)
+    offset_segments = MakeSegmentOffsets(segments, symbols)
+
+    #Substitute symbols again now that we know label positions
+    SubstituteSymbols2(offset_segments, symbols)
+
+    output = Assemble(offset_segments)
+    with open(outputFile, 'wb') as f:
         f.write(output)
-
 
 if __name__ == '__main__':
     main()
