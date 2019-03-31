@@ -166,6 +166,8 @@ def GetMacros(lines):
             
         else:
             i += 1
+    if current_macro is not None:
+        raise Exception(f'Macro not closed: {current_macro}')
     return macros
 
 def IsLabelLine(line):
