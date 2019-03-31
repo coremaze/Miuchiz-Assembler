@@ -36,6 +36,7 @@ def DoIncludes(lines):
             StripLines(includeLines)
             ReplaceStrings(includeLines)
             RemoveComments(includeLines)
+            SplitLabelLines(includeLines)
             StripLines(includeLines)
             includeLines = RemoveBlankLines(includeLines)
             DoIncludes(includeLines)
