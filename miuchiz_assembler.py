@@ -2,6 +2,7 @@ import opcodes
 import random
 import struct
 import sys
+import string
 
 def RemoveComments(lines):
     for i in range(len(lines)):
@@ -172,17 +173,17 @@ def GetMacros(lines):
 
 def IsLabelLine(line):
     return line.endswith(':')
+
+def Mangle(label):
+    return '@@@' + ''.join(random.choices(string.ascii_letters + '@_', k=64)) + label
             
 def InjectMacros(lines, macros):
     i = 0
     macro_identifier = 0
     while i < len(lines):
-        if '(' not in lines[i]:
-            pass
-        elif not lines[i].endswith(')'):
-            pass
-        elif opcodes.IsOpcode(lines[i].split(' ')[0]):
-            pass
+        if '(' not in lines[i]: pass
+        elif not lines[i].endswith(')'): pass
+        elif opcodes.IsOpcode(lines[i].split(' ')[0]): pass
         else:
             name, args = GetMacroInfo(lines[i], declaration=False)
             if name not in macros:
@@ -200,7 +201,7 @@ def InjectMacros(lines, macros):
                         label = lines_to_inject[j][:-1]
                         if not IsValidLabel(label):
                             raise Exception(f'Invalid label {label}')
-                        new_label = f'@@@@@@@@@{random.randint(100000,9999999999999999999999999999)}_@_{macro_identifier}'
+                        new_label = Mangle(label)
                         macro_identifier += 1
                         for x in range(len(lines_to_inject)):
                             lines_to_inject[x] = lines_to_inject[x].replace(label, new_label)
