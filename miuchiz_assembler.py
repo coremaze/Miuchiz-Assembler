@@ -179,7 +179,6 @@ def Mangle(label):
             
 def InjectMacros(lines, macros):
     i = 0
-    macro_identifier = 0
     while i < len(lines):
         if '(' not in lines[i]: pass
         elif not lines[i].endswith(')'): pass
@@ -202,7 +201,6 @@ def InjectMacros(lines, macros):
                         if not IsValidLabel(label):
                             raise Exception(f'Invalid label {label}')
                         new_label = Mangle(label)
-                        macro_identifier += 1
                         for x in range(len(lines_to_inject)):
                             lines_to_inject[x] = lines_to_inject[x].replace(label, new_label)
                         
