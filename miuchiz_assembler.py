@@ -315,7 +315,6 @@ def GetInstructionLength(text):
             if not args:
                 return 0
             return len(args) * length
-    
     mode = GetInstructionAddressingMode(text)
     if mode in ('Implied', 'Accumulator'):
         return 1
@@ -532,7 +531,6 @@ def main():
 
     SubstituteSymbols(lines, symbols)
     lines = MergeSegments(lines)
-    
     #Give each bank and .AT a default program counter
     MakeDefaultPCs(lines)
 
