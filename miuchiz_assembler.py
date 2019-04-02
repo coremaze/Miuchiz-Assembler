@@ -501,6 +501,52 @@ def MergeSegments(lines):
             lines.append(bline)
     return lines
 
+def BuildProcs(lines):
+    i = 0
+    inProc = False
+    procStart = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith('.PROC'):
+            if inProc:
+                raise Exception(f'Embedded proc: {line}')
+            inProc = True
+            if len(line.split(' ')) != 2:
+                raise Exception(f'Invalid proc declaration: {line}')
+            procName = line.split(' ')[1]
+            if not IsValidLabel(procName):
+                raise Exception(f'Invalid proc name: {line}')
+            procStart = i
+            lines[i] = procName + ':' #Convert to a label
+            
+        elif line == '.ENDPROC':
+            if not inProc:
+                raise Exception(f'No proc to match: {line}')
+            inProc = False
+            lines.pop(i)
+            i -= 1
+        elif inProc:
+            #If this line declares a label, mangle the label and replace all the references to it.
+            if IsLabelLine(line):
+                label = line[:-1]
+                mangled_label = Mangle(label)
+                lines[i] = mangled_label + ':'
+                #search the rest of the proc for label references to replace
+                j = procStart
+                while True:
+                    if j >= len(lines):
+                        raise Exception(f'Missing .ENDPROC')
+                    procLine = lines[j]
+                    if procLine == '.ENDPROC': break
+                    split_line = MultiSplit(procLine, [' ', '\t', '+', '-', '<', '>', '(', ')', '#', ',', ':'], keep_separator=True)
+                    split_line = [(x if x != label else mangled_label) for x in split_line]
+                    lines[j] = ''.join(split_line)
+                    j += 1
+            
+        i += 1
+    if inProc:
+        raise Exception(f'Missing .ENDPROC')
+
 def main():
     if len(sys.argv) == 3:
         inputFile = sys.argv[1]
@@ -529,6 +575,9 @@ def main():
     #Inject macros
     macros = GetMacros(lines)
     InjectMacros(lines, macros)
+
+    #Build procs
+    BuildProcs(lines)
 
     SubstituteSymbols(lines, symbols)
     lines = MergeSegments(lines)
