@@ -178,6 +178,7 @@ def Mangle(label):
     return '@@@' + ''.join(random.choices(string.ascii_letters + '@_', k=64)) + label
             
 def InjectMacros(lines, macros):
+    replacedMacro = False
     i = 0
     while i < len(lines):
         if '(' not in lines[i]: pass
@@ -190,6 +191,7 @@ def InjectMacros(lines, macros):
             macro = macros[name]
             if len(args) != len(macro['args']):
                 raise Exception(f'Wrong args for macro: {lines[i]}')
+            replacedMacro = True
             lines_to_inject = macro['lines'][:]
             for mArg, lArg in sorted(zip(macro['args'], args), key=lambda x: len(x[0]), reverse=True):
                 for j in range(len(lines_to_inject)):
@@ -212,6 +214,7 @@ def InjectMacros(lines, macros):
             i -= 1
                     
         i += 1
+    return replacedMacro
         
 
 def GetBankLogicalAddress(bank):
@@ -572,7 +575,8 @@ def main():
 
     #Inject macros
     macros = GetMacros(lines)
-    InjectMacros(lines, macros)
+    #Keep applying macros until there are no more embedded macros
+    while InjectMacros(lines, macros): pass
 
     #Build procs
     BuildProcs(lines)
