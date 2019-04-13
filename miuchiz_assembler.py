@@ -449,7 +449,7 @@ def AssembleInstruction(instruction, logical_location):
         absolute = EvaluateNumber(absolute)
         b_instruction += struct.pack('<H', absolute)
     elif mode == 'Bit, Relative':
-        args = MultiSplit(args, [',', ' '])[0]
+        args = MultiSplit(args, [',', ' '])
         bit = args[0].strip()
         bit = EvaluateNumber(bit)
         b_instruction += struct.pack('<B', bit)
