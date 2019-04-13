@@ -542,6 +542,11 @@ def BuildProcs(lines):
                         raise Exception(f'Missing .ENDPROC')
                     procLine = lines[j]
                     if procLine == '.ENDPROC': break
+                    #Splitting, replacing, and rejoining is intensive,
+                    #so this is a faster way to rule out lines that need no work.
+                    if label not in procLine:
+                        j += 1
+                        continue
                     split_line = MultiSplit(procLine, [' ', '\t', '+', '-', '<', '>', '(', ')', '#', ',', ':'], keep_separator=True)
                     split_line = [(x if x != label else mangled_label) for x in split_line]
                     lines[j] = ''.join(split_line)
