@@ -766,7 +766,72 @@ opcodes = {
   0x98: {
     "name": "TYA",
     "mode": "Implied"
+  },
+  0x87: {
+    "name": "SMB0",
+    "mode": "Zero Page"
+  },
+  0x97: {
+    "name": "SMB1",
+    "mode": "Zero Page"
+  },
+  0xA7: {
+    "name": "SMB2",
+    "mode": "Zero Page"
+  },
+  0xB7: {
+    "name": "SMB3",
+    "mode": "Zero Page"
+  },
+  0xC7: {
+    "name": "SMB4",
+    "mode": "Zero Page"
+  },
+  0xD7: {
+    "name": "SMB5",
+    "mode": "Zero Page"
+  },
+  0xE7: {
+    "name": "SMB6",
+    "mode": "Zero Page"
+  },
+  0xF7: {
+    "name": "SMB7",
+    "mode": "Zero Page"
+  },
+  0x07: {
+    "name": "RMB0",
+    "mode": "Zero Page"
+  },
+  0x17: {
+    "name": "RMB1",
+    "mode": "Zero Page"
+  },
+  0x27: {
+    "name": "RMB2",
+    "mode": "Zero Page"
+  },
+  0x37: {
+    "name": "RMB3",
+    "mode": "Zero Page"
+  },
+  0x47: {
+    "name": "RMB4",
+    "mode": "Zero Page"
+  },
+  0x57: {
+    "name": "RMB5",
+    "mode": "Zero Page"
+  },
+  0x67: {
+    "name": "RMB6",
+    "mode": "Zero Page"
+  },
+  0x77: {
+    "name": "RMB7",
+    "mode": "Zero Page"
   }
+  
 }
 
 def GetMnemonicModes(name):
