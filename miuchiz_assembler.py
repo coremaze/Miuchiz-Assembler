@@ -3,6 +3,7 @@ import random
 import struct
 import sys
 import string
+import os
 
 def RemoveComments(lines):
     for i in range(len(lines)):
@@ -443,7 +444,7 @@ def AssembleInstruction(instruction, logical_location):
         b_instruction += struct.pack('<B', zp_ptr)
     elif mode in ('Absolute,X', 'Absolute,Y', 'Absolute'):
         absolute = args
-        absolute = MultiSplit(absolute, [','])[0]
+        absolute = MultiSplit(absolute, ['(', ')', ','])[0]
         absolute = EvaluateNumber(absolute)
         b_instruction += struct.pack('<H', absolute)
     elif mode == 'Bit, Relative':
@@ -558,9 +559,15 @@ def main():
     else:
         print('Usage: miuchiz_assembler.py <input file> <output file>')
         return
+
     
     #Load file, its includes, and clean up the lines
     lines = LoadFileLines(inputFile)
+    #Set CWD
+    path = os.path.join(os.getcwd(), inputFile)
+    dir_ = os.path.dirname(path)
+    os.chdir(dir_)
+    
     StripLines(lines)
     ReplaceStrings(lines)
     RemoveComments(lines)
