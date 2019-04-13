@@ -276,8 +276,6 @@ def GetInstructionAddressingMode(text):
 
     if mnemonic in RELATIVE:
         mode = 'Relative'
-    elif mnemonic.startswith('SMB') or mnemonic.startswith('RMB'):
-        mode = 'Zero Page'
     elif len(args) == 0:
         mode = 'Implied'
     elif len(args) == 1:
@@ -306,6 +304,9 @@ def GetInstructionAddressingMode(text):
             mode = 'Accumulator'
         elif args[0].endswith(','):
             mode = 'Bit, Relative'
+
+    if mode == 'Absolute' and mode not in opcodes.GetMnemonicModes(mnemonic) and 'Zero Page' in opcodes.GetMnemonicModes(mnemonic):
+        mode = 'Zero Page'
 
     if mode == '' or mode not in opcodes.GetMnemonicModes(mnemonic):
         raise Exception(f'Cannot Assemble {text}')
