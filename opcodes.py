@@ -830,6 +830,14 @@ opcodes = {
   0x77: {
     "name": "RMB7",
     "mode": "Zero Page"
+  },
+  0x08: {
+    "name": "PHP",
+    "mode": "Implied"
+  },
+  0x28: {
+    "name": "PLP",
+    "mode": "Implied"
   }
   
 }
